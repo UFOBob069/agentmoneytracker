@@ -21,16 +21,24 @@ export async function POST(request: NextRequest) {
     const priceId = planType === 'yearly' 
       ? STRIPE_CONFIG.YEARLY_PRICE_ID 
       : STRIPE_CONFIG.MONTHLY_PRICE_ID;
+    if (!priceId || priceId === 'price_xxx') {
+      return NextResponse.json({ error: 'Stripe price ID not configured' }, { status: 500 });
+    }
 
     // Check if user already has a Stripe customer ID
     if (!stripe) {
       return NextResponse.json({ error: 'Stripe is not initialized' }, { status: 500 });
     }
     const userRef = adminDb.collection('userSubscriptions').doc(userId);
-    const userSnap = await userRef.get();
-    let stripeCustomerId: string | undefined = userSnap.exists
-      ? ((userSnap.data() as Record<string, unknown>)?.stripeCustomerId as string | undefined)
-      : undefined;
+    let stripeCustomerId: string | undefined = undefined;
+    try {
+      const userSnap = await userRef.get();
+      stripeCustomerId = userSnap.exists
+        ? ((userSnap.data() as Record<string, unknown>)?.stripeCustomerId as string | undefined)
+        : undefined;
+    } catch (e) {
+      console.warn('Firestore read failed (continuing without customerId):', e);
+    }
 
     // Create Stripe customer if doesn't exist
     if (!stripeCustomerId) {
@@ -102,16 +110,20 @@ export async function POST(request: NextRequest) {
       cancel_url: session.cancel_url
     });
 
-    // Save initial subscription record
-    await userRef.set({
-      userId,
-      stripeCustomerId,
-      status: 'incomplete',
-      planType,
-      couponCode: couponCode || null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    }, { merge: true });
+    // Save initial subscription record (best-effort)
+    try {
+      await userRef.set({
+        userId,
+        stripeCustomerId,
+        status: 'incomplete',
+        planType,
+        couponCode: couponCode || null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }, { merge: true });
+    } catch (e) {
+      console.warn('Firestore write failed (webhook will backfill):', e);
+    }
 
     return NextResponse.json({ sessionId: session.id });
   } catch (error) {
