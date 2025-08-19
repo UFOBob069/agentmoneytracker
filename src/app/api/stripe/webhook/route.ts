@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '../../../../lib/stripe';
-import { db } from '../../../../firebase';
-import { doc, setDoc, updateDoc } from 'firebase/firestore';
+import { adminDb } from '../../../../lib/firebaseAdmin';
 import Stripe from 'stripe';
 
 type StripeSubscriptionWithPeriod = Stripe.Subscription & {
@@ -42,8 +41,8 @@ export async function POST(request: NextRequest) {
         if (session.metadata?.userId && session.customer) {
           const userId = session.metadata.userId;
           const customerId = typeof session.customer === 'string' ? session.customer : session.customer.id;
-          const subscriptionRef = doc(db, 'userSubscriptions', userId);
-          await setDoc(subscriptionRef, {
+          const subscriptionRef = adminDb.collection('userSubscriptions').doc(userId);
+          await subscriptionRef.set({
             userId,
             stripeCustomerId: customerId,
             stripeSubscriptionId: session.subscription as string,
@@ -60,8 +59,8 @@ export async function POST(request: NextRequest) {
         const subscription = event.data.object as StripeSubscriptionWithPeriod;
         if (subscription.metadata?.userId) {
           const userId = subscription.metadata.userId;
-          const subscriptionRef = doc(db, 'userSubscriptions', userId);
-          await updateDoc(subscriptionRef, {
+          const subscriptionRef = adminDb.collection('userSubscriptions').doc(userId);
+          await subscriptionRef.update({
             stripeSubscriptionId: subscription.id,
             status: subscription.status,
             currentPeriodStart: new Date(subscription.current_period_start * 1000),
@@ -79,8 +78,8 @@ export async function POST(request: NextRequest) {
         const subscription = event.data.object as Stripe.Subscription;
         if (subscription.metadata?.userId) {
           const userId = subscription.metadata.userId;
-          const subscriptionRef = doc(db, 'userSubscriptions', userId);
-          await updateDoc(subscriptionRef, {
+          const subscriptionRef = adminDb.collection('userSubscriptions').doc(userId);
+          await subscriptionRef.update({
             status: 'canceled',
             updatedAt: new Date(),
           });

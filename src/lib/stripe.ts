@@ -2,9 +2,7 @@ import Stripe from 'stripe';
 
 // Server-side Stripe instance
 export const stripe = process.env.STRIPE_SECRET_KEY
-  ? new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: '2025-06-30.basil',
-    })
+  ? new Stripe(process.env.STRIPE_SECRET_KEY)
   : null;
 
 // Server-side environment variable check

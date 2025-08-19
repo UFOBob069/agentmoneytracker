@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe, STRIPE_CONFIG } from '../../../../lib/stripe';
-import { db } from '../../../../firebase';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { adminDb } from '../../../../lib/firebaseAdmin';
 import Stripe from 'stripe';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,9 +26,9 @@ export async function POST(request: NextRequest) {
     if (!stripe) {
       return NextResponse.json({ error: 'Stripe is not initialized' }, { status: 500 });
     }
-    const userRef = doc(db, 'userSubscriptions', userId);
-    const userDoc = await getDoc(userRef);
-    let stripeCustomerId = userDoc.exists() ? userDoc.data()?.stripeCustomerId : null;
+    const userRef = adminDb.collection('userSubscriptions').doc(userId);
+    const userSnap = await userRef.get();
+    let stripeCustomerId = userSnap.exists ? (userSnap.data() as Record<string, unknown>)?.stripeCustomerId : null;
 
     // Create Stripe customer if doesn't exist
     if (!stripeCustomerId) {
@@ -96,7 +98,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Save initial subscription record
-    await setDoc(userRef, {
+    await userRef.set({
       userId,
       stripeCustomerId,
       status: 'incomplete',

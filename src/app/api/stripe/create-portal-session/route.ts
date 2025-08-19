@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '../../../../lib/stripe';
-import { db } from '../../../../firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { adminDb } from '../../../../lib/firebaseAdmin';
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,21 +17,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Stripe is not initialized' },{ status: 500 });
     }
     
-    // Get user subscription from Firestore
-    const userRef = doc(db, 'userSubscriptions', userId);
+    // Get user subscription from Firestore (admin)
+    const userRef = adminDb.collection('userSubscriptions').doc(userId);
     console.log('Fetching user subscription for userId:', userId);
     
-    const userDoc = await getDoc(userRef);
-    console.log('User document exists:', userDoc.exists());
+    const userDoc = await userRef.get();
+    console.log('User document exists:', userDoc.exists);
     
-    if (!userDoc.exists()) {
+    if (!userDoc.exists) {
       console.log('Error: User subscription not found for userId:', userId);
       return NextResponse.json({ 
         error: 'User subscription not found. Please ensure you have an active subscription.' 
       }, { status: 404 });
     }
     
-    const userData = userDoc.data();
+    const userData = userDoc.data() as Record<string, unknown>;
     console.log('User subscription data:', userData);
     
     const stripeCustomerId = userData.stripeCustomerId;
