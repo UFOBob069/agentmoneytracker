@@ -2,13 +2,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { stripe, STRIPE_CONFIG } from '../../../../lib/stripe';
 import { adminDb } from '../../../../lib/firebaseAdmin';
 import Stripe from 'stripe';
+import { randomUUID } from 'crypto';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
+  const requestId = randomUUID();
+  const debugEnabled: boolean = process.env.CHECKOUT_DEBUG === '1';
   try {
     const { userId, email, planType, couponCode } = await request.json();
+
+    console.log('[checkout] incoming', {
+      requestId,
+      userIdPresent: !!userId,
+      emailPresent: !!email,
+      planType,
+      origin: request.nextUrl.origin,
+    });
 
     if (!userId || !email || !planType) {
       return NextResponse.json(
@@ -22,12 +33,17 @@ export async function POST(request: NextRequest) {
       ? STRIPE_CONFIG.YEARLY_PRICE_ID 
       : STRIPE_CONFIG.MONTHLY_PRICE_ID;
     if (!priceId || priceId === 'price_xxx') {
-      return NextResponse.json({ error: 'Stripe price ID not configured' }, { status: 500 });
+      console.error('[checkout] price id not configured', { requestId, planType, priceId });
+      return NextResponse.json({ error: 'Stripe price ID not configured', requestId }, { status: 500 });
     }
 
     // Check if user already has a Stripe customer ID
     if (!stripe) {
-      return NextResponse.json({ error: 'Stripe is not initialized' }, { status: 500 });
+      console.error('[checkout] stripe not initialized', {
+        requestId,
+        hasSecret: !!process.env.STRIPE_SECRET_KEY,
+      });
+      return NextResponse.json({ error: 'Stripe is not initialized', requestId }, { status: 500 });
     }
     const userRef = adminDb.collection('userSubscriptions').doc(userId);
     let stripeCustomerId: string | undefined = undefined;
@@ -37,7 +53,7 @@ export async function POST(request: NextRequest) {
         ? ((userSnap.data() as Record<string, unknown>)?.stripeCustomerId as string | undefined)
         : undefined;
     } catch (e) {
-      console.warn('Firestore read failed (continuing without customerId):', e);
+      console.warn('[checkout] firestore read failed (continuing without customerId)', { requestId, error: e instanceof Error ? e.message : String(e) });
     }
 
     // Create Stripe customer if doesn't exist
@@ -49,6 +65,9 @@ export async function POST(request: NextRequest) {
         },
       });
       stripeCustomerId = customer.id;
+      console.log('[checkout] created stripe customer', { requestId, stripeCustomerId });
+    } else {
+      console.log('[checkout] using existing stripe customer', { requestId, stripeCustomerId });
     }
 
     // Prepare checkout session parameters
@@ -81,12 +100,14 @@ export async function POST(request: NextRequest) {
       sessionParams.customer = stripeCustomerId;
     }
 
-    console.log('Creating checkout session with params:', {
-      success_url: sessionParams.success_url,
-      cancel_url: sessionParams.cancel_url,
+    console.log('[checkout] creating session', {
+      requestId,
       priceId,
       userId,
-      planType
+      planType,
+      hasCustomer: !!stripeCustomerId,
+      success_url: sessionParams.success_url,
+      cancel_url: sessionParams.cancel_url,
     });
 
     // Add coupon if provided
@@ -104,10 +125,11 @@ export async function POST(request: NextRequest) {
     }
     const session = await stripe.checkout.sessions.create(sessionParams);
 
-    console.log('Checkout session created:', {
+    console.log('[checkout] session created', {
+      requestId,
       sessionId: session.id,
       success_url: session.success_url,
-      cancel_url: session.cancel_url
+      cancel_url: session.cancel_url,
     });
 
     // Save initial subscription record (best-effort)
@@ -121,31 +143,30 @@ export async function POST(request: NextRequest) {
         createdAt: new Date(),
         updatedAt: new Date(),
       }, { merge: true });
+      console.log('[checkout] seed subscription doc written', { requestId, userId });
     } catch (e) {
-      console.warn('Firestore write failed (webhook will backfill):', e);
+      console.warn('[checkout] firestore write failed (webhook will backfill)', { requestId, error: e instanceof Error ? e.message : String(e) });
     }
 
     return NextResponse.json({ sessionId: session.id });
-  } catch (error) {
-    console.error('Error creating checkout session:', error);
-    
-    // Log more details about the error
-    if (error instanceof Error) {
-      console.error('Error message:', error.message);
-      console.error('Error stack:', error.stack);
+  } catch (error: unknown) {
+    console.error('[checkout] error creating session', {
+      requestId,
+      name: (error as Error & { type?: string; code?: string })?.name,
+      message: (error as Error & { type?: string; code?: string })?.message,
+      type: (error as { type?: string })?.type,
+      code: (error as { code?: string })?.code,
+    });
+
+    const body: Record<string, unknown> = { error: 'Failed to create checkout session', requestId };
+    if (debugEnabled) {
+      body.details = {
+        name: (error as Error & { type?: string; code?: string })?.name,
+        message: (error as Error & { type?: string; code?: string })?.message,
+        type: (error as { type?: string })?.type,
+        code: (error as { code?: string })?.code,
+      };
     }
-    
-    // Check if it's a Stripe error
-    if (error && typeof error === 'object' && 'type' in error) {
-      const stripeError = error as { type?: string; code?: string; message?: string };
-      console.error('Stripe error type:', stripeError.type);
-      console.error('Stripe error code:', stripeError.code);
-      console.error('Stripe error message:', stripeError.message);
-    }
-    
-    return NextResponse.json(
-      { error: 'Failed to create checkout session' },
-      { status: 500 }
-    );
+    return NextResponse.json(body, { status: 500 });
   }
 } 

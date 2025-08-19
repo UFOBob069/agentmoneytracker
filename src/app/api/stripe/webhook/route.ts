@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '../../../../lib/stripe';
 import { adminDb } from '../../../../lib/firebaseAdmin';
+import { randomUUID } from 'crypto';
 import Stripe from 'stripe';
 
 type StripeSubscriptionWithPeriod = Stripe.Subscription & {
@@ -9,17 +10,21 @@ type StripeSubscriptionWithPeriod = Stripe.Subscription & {
 };
 
 export async function POST(request: NextRequest) {
+  const requestId = randomUUID();
   const body = await request.text();
   const signature = request.headers.get('stripe-signature');
   
   if (!signature) {
-    return NextResponse.json({ error: 'Missing signature' }, { status: 400 });
+    console.error('[webhook] missing signature', { requestId });
+    return NextResponse.json({ error: 'Missing signature', requestId }, { status: 400 });
   }
   if (!process.env.STRIPE_WEBHOOK_SECRET) {
-    return NextResponse.json({ error: 'Webhook secret not configured' }, { status: 500 });
+    console.error('[webhook] missing STRIPE_WEBHOOK_SECRET', { requestId });
+    return NextResponse.json({ error: 'Webhook secret not configured', requestId }, { status: 500 });
   }
   if (!stripe) {
-    return NextResponse.json({ error: 'Stripe is not initialized' }, { status: 500 });
+    console.error('[webhook] stripe not initialized', { requestId, hasSecret: !!process.env.STRIPE_SECRET_KEY });
+    return NextResponse.json({ error: 'Stripe is not initialized', requestId }, { status: 500 });
   }
 
   let event: Stripe.Event;
@@ -30,8 +35,8 @@ export async function POST(request: NextRequest) {
       process.env.STRIPE_WEBHOOK_SECRET
     );
   } catch (err) {
-    console.error('Webhook signature verification failed:', err);
-    return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
+    console.error('[webhook] signature verification failed', { requestId, error: err instanceof Error ? err.message : String(err) });
+    return NextResponse.json({ error: 'Invalid signature', requestId }, { status: 400 });
   }
 
   try {
@@ -50,7 +55,7 @@ export async function POST(request: NextRequest) {
             createdAt: new Date(),
             updatedAt: new Date(),
           });
-          console.log('Subscription record created for user:', userId);
+          console.log('[webhook] checkout.session.completed -> seed subscription created', { requestId, userId });
         }
         break;
       }
@@ -70,7 +75,7 @@ export async function POST(request: NextRequest) {
             planType: subscription.items.data[0]?.price.recurring?.interval as 'monthly' | 'yearly',
             updatedAt: new Date(),
           });
-          console.log('Subscription record updated for user:', userId);
+          console.log('[webhook] subscription upserted', { requestId, userId, status: subscription.status });
         }
         break;
       }
@@ -83,17 +88,20 @@ export async function POST(request: NextRequest) {
             status: 'canceled',
             updatedAt: new Date(),
           });
-          console.log('Subscription marked as canceled for user:', userId);
+          console.log('[webhook] subscription canceled', { requestId, userId });
         }
         break;
       }
       default:
-        console.log('Unhandled event type:', event.type);
+        console.log('[webhook] unhandled event type', { requestId, type: event.type });
     }
   } catch (error) {
-    console.error('Error processing webhook:', error);
-    return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 });
+    console.error('[webhook] processing error', {
+      requestId,
+      message: (error as Error)?.message,
+    });
+    return NextResponse.json({ error: 'Webhook processing failed', requestId }, { status: 500 });
   }
 
-  return NextResponse.json({ received: true });
+  return NextResponse.json({ received: true, requestId });
 } 
