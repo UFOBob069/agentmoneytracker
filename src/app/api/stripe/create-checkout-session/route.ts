@@ -28,7 +28,9 @@ export async function POST(request: NextRequest) {
     }
     const userRef = adminDb.collection('userSubscriptions').doc(userId);
     const userSnap = await userRef.get();
-    let stripeCustomerId = userSnap.exists ? (userSnap.data() as Record<string, unknown>)?.stripeCustomerId : null;
+    let stripeCustomerId: string | undefined = userSnap.exists
+      ? ((userSnap.data() as Record<string, unknown>)?.stripeCustomerId as string | undefined)
+      : undefined;
 
     // Create Stripe customer if doesn't exist
     if (!stripeCustomerId) {
@@ -43,7 +45,6 @@ export async function POST(request: NextRequest) {
 
     // Prepare checkout session parameters
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
-      customer: stripeCustomerId,
       payment_method_types: ['card'],
       line_items: [
         {
@@ -67,6 +68,10 @@ export async function POST(request: NextRequest) {
         planType,
       },
     };
+
+    if (typeof stripeCustomerId === 'string' && stripeCustomerId.length > 0) {
+      sessionParams.customer = stripeCustomerId;
+    }
 
     console.log('Creating checkout session with params:', {
       success_url: sessionParams.success_url,

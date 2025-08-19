@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     const userData = userDoc.data() as Record<string, unknown>;
     console.log('User subscription data:', userData);
     
-    const stripeCustomerId = userData.stripeCustomerId;
+    const stripeCustomerId = userData.stripeCustomerId as string | undefined;
     console.log('Stripe customer ID:', stripeCustomerId);
     
     if (!stripeCustomerId) {
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     // Create portal session
     console.log('Creating portal session for customer:', stripeCustomerId);
     const session = await stripe.billingPortal.sessions.create({
-      customer: stripeCustomerId,
+      customer: stripeCustomerId as string,
       return_url: `${request.nextUrl.origin}/dashboard`,
     });
     
