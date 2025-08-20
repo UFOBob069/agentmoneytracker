@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
             status: 'trialing',
             createdAt: new Date(),
             updatedAt: new Date(),
-          });
+          }, { merge: true });
           console.log('[webhook] checkout.session.completed -> seed subscription created', { requestId, userId });
         }
         break;
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
         if (subscription.metadata?.userId) {
           const userId = subscription.metadata.userId;
           const subscriptionRef = adminDb.collection('userSubscriptions').doc(userId);
-          await subscriptionRef.update({
+          await subscriptionRef.set({
             stripeSubscriptionId: subscription.id,
             status: subscription.status,
             currentPeriodStart: new Date(subscription.current_period_start * 1000),
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
             trialEnd: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
             planType: subscription.items.data[0]?.price.recurring?.interval as 'monthly' | 'yearly',
             updatedAt: new Date(),
-          });
+          }, { merge: true });
           console.log('[webhook] subscription upserted', { requestId, userId, status: subscription.status });
         }
         break;
@@ -84,10 +84,10 @@ export async function POST(request: NextRequest) {
         if (subscription.metadata?.userId) {
           const userId = subscription.metadata.userId;
           const subscriptionRef = adminDb.collection('userSubscriptions').doc(userId);
-          await subscriptionRef.update({
+          await subscriptionRef.set({
             status: 'canceled',
             updatedAt: new Date(),
-          });
+          }, { merge: true });
           console.log('[webhook] subscription canceled', { requestId, userId });
         }
         break;
