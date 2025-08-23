@@ -93,6 +93,7 @@ export async function POST(request: NextRequest) {
       metadata: {
         userId,
         planType,
+        couponCode: couponCode || null,
       },
     };
 

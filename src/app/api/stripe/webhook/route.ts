@@ -46,16 +46,25 @@ export async function POST(request: NextRequest) {
         if (session.metadata?.userId && session.customer) {
           const userId = session.metadata.userId;
           const customerId = typeof session.customer === 'string' ? session.customer : session.customer.id;
+          
+          // Get promotion code from the session
+          let promotionCode = null;
+          if (session.total_details?.amount_discount && session.total_details.amount_discount > 0) {
+            // If there's a discount, try to get the promotion code
+            promotionCode = session.metadata?.promotionCode || 'PROMO_APPLIED';
+          }
+          
           const subscriptionRef = adminDb.collection('userSubscriptions').doc(userId);
           await subscriptionRef.set({
             userId,
             stripeCustomerId: customerId,
             stripeSubscriptionId: session.subscription as string,
             status: 'trialing',
+            couponCode: promotionCode,
             createdAt: new Date(),
             updatedAt: new Date(),
           }, { merge: true });
-          console.log('[webhook] checkout.session.completed -> seed subscription created', { requestId, userId });
+          console.log('[webhook] checkout.session.completed -> seed subscription created', { requestId, userId, promotionCode });
         }
         break;
       }
@@ -64,18 +73,29 @@ export async function POST(request: NextRequest) {
         const subscription = event.data.object as StripeSubscriptionWithPeriod;
         if (subscription.metadata?.userId) {
           const userId = subscription.metadata.userId;
+          
+          // Get promotion code from subscription if available
+          let promotionCode = null;
+          if (subscription.discounts && subscription.discounts.length > 0) {
+            const discount = subscription.discounts[0];
+            if (typeof discount === 'object' && discount.coupon) {
+              promotionCode = discount.coupon.id;
+            }
+          }
+          
           const subscriptionRef = adminDb.collection('userSubscriptions').doc(userId);
           await subscriptionRef.set({
             stripeSubscriptionId: subscription.id,
             status: subscription.status,
-            currentPeriodStart: new Date(subscription.current_period_start * 1000),
-            currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+            currentPeriodStart: subscription.current_period_start ? new Date(subscription.current_period_start * 1000) : null,
+            currentPeriodEnd: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
             trialStart: subscription.trial_start ? new Date(subscription.trial_start * 1000) : null,
             trialEnd: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
             planType: subscription.items.data[0]?.price.recurring?.interval as 'monthly' | 'yearly',
+            couponCode: promotionCode,
             updatedAt: new Date(),
           }, { merge: true });
-          console.log('[webhook] subscription upserted', { requestId, userId, status: subscription.status });
+          console.log('[webhook] subscription upserted', { requestId, userId, status: subscription.status, promotionCode });
         }
         break;
       }
