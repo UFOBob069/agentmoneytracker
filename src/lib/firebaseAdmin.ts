@@ -11,13 +11,22 @@ function initializeFirebaseAdmin() {
     const splitPrivateKey = process.env.FIREBASE_PRIVATE_KEY;
 
     if (serviceAccountJson) {
-      const serviceAccount = JSON.parse(serviceAccountJson);
-      initializeApp({
-        credential: cert(serviceAccount),
-      });
-      // eslint-disable-next-line no-console
-      console.log('[firebase-admin] initialized with FIREBASE_SERVICE_ACCOUNT');
-      return;
+      try {
+        const serviceAccount = JSON.parse(serviceAccountJson);
+        // Fix the private key by replacing \\n with actual newlines
+        if (serviceAccount.private_key) {
+          serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+        }
+        initializeApp({
+          credential: cert(serviceAccount),
+        });
+        // eslint-disable-next-line no-console
+        console.log('[firebase-admin] initialized with FIREBASE_SERVICE_ACCOUNT');
+        return;
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('[firebase-admin] failed to parse FIREBASE_SERVICE_ACCOUNT, falling back to split vars', error);
+      }
     }
 
     if (splitProjectId && splitClientEmail && splitPrivateKey) {
