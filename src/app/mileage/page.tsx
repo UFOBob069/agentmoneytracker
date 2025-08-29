@@ -13,6 +13,8 @@ interface MileageEntry {
   userId?: string;
   beginAddress?: string;
   endAddress?: string;
+  odometerStart?: number;
+  odometerEnd?: number;
   roundTrip?: boolean;
   miles?: number;
   costPerMile?: number;
@@ -101,9 +103,12 @@ export default function MileagePage() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<unknown>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [trackingMethod, setTrackingMethod] = useState<'address' | 'odometer'>('address');
   const [form, setForm] = useState({
     beginAddress: "",
     endAddress: "",
+    odometerStart: "",
+    odometerEnd: "",
     roundTrip: false,
     miles: "",
     costPerMile: "0.67",
@@ -203,9 +208,22 @@ export default function MileagePage() {
     setCalculatedMiles(null);
     setCalculating(true);
     try {
-      const miles = await getMiles(form.beginAddress, form.endAddress);
-      if (miles == null) throw new Error("Could not calculate distance between addresses.");
-      setCalculatedMiles(form.roundTrip ? miles * 2 : miles);
+      let miles: number | null = null;
+      
+      if (trackingMethod === 'address') {
+        miles = await getMiles(form.beginAddress, form.endAddress);
+        if (miles == null) throw new Error("Could not calculate distance between addresses.");
+      } else if (trackingMethod === 'odometer') {
+        const start = parseFloat(form.odometerStart);
+        const end = parseFloat(form.odometerEnd);
+        if (isNaN(start) || isNaN(end)) throw new Error("Please enter valid odometer readings.");
+        if (end < start) throw new Error("End odometer reading must be greater than start reading.");
+        miles = end - start;
+      }
+      
+      if (miles !== null) {
+        setCalculatedMiles(form.roundTrip ? miles * 2 : miles);
+      }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Failed to calculate miles";
       setError(errorMessage);
@@ -223,18 +241,27 @@ export default function MileagePage() {
       
       let miles = calculatedMiles;
       if (miles == null) {
-        miles = await getMiles(form.beginAddress, form.endAddress);
-        if (miles == null) throw new Error("Could not calculate distance between addresses.");
-        if (form.roundTrip) miles *= 2;
+        if (trackingMethod === 'address') {
+          miles = await getMiles(form.beginAddress, form.endAddress);
+          if (miles == null) throw new Error("Could not calculate distance between addresses.");
+          if (form.roundTrip) miles *= 2;
+        } else if (trackingMethod === 'odometer') {
+          const start = parseFloat(form.odometerStart);
+          const end = parseFloat(form.odometerEnd);
+          if (isNaN(start) || isNaN(end)) throw new Error("Please enter valid odometer readings.");
+          if (end < start) throw new Error("End odometer reading must be greater than start reading.");
+          miles = end - start;
+          if (form.roundTrip) miles *= 2;
+        }
       }
+      
+      if (miles == null) throw new Error("Could not calculate miles.");
       
       const costPerMile = parseFloat(form.costPerMile) || 0.67;
       const totalCost = miles * costPerMile;
 
-      await addDoc(collection(db, "mileage"), {
+      const mileageData: Partial<MileageEntry> = {
         userId: (user as { uid: string }).uid,
-        beginAddress: form.beginAddress,
-        endAddress: form.endAddress,
         roundTrip: form.roundTrip,
         miles: miles,
         costPerMile: costPerMile,
@@ -243,11 +270,24 @@ export default function MileagePage() {
         date: form.date,
         notes: form.notes,
         createdAt: Timestamp.now(),
-      });
+      };
+
+      // Add tracking method specific data
+      if (trackingMethod === 'address') {
+        mileageData.beginAddress = form.beginAddress;
+        mileageData.endAddress = form.endAddress;
+      } else if (trackingMethod === 'odometer') {
+        mileageData.odometerStart = parseFloat(form.odometerStart);
+        mileageData.odometerEnd = parseFloat(form.odometerEnd);
+      }
+
+      await addDoc(collection(db, "mileage"), mileageData);
       
       setForm({ 
         beginAddress: "", 
         endAddress: "", 
+        odometerStart: "",
+        odometerEnd: "",
         roundTrip: false, 
         miles: "", 
         costPerMile: "0.67", 
@@ -411,49 +451,118 @@ export default function MileagePage() {
             </div>
             
             <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="relative">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Begin Address</label>
-                  <input 
-                    type="text" 
-                    name="beginAddress" 
-                    value={form.beginAddress} 
-                    onChange={handleChange} 
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" 
-                    required 
-                    autoComplete="off" 
-                    placeholder="Enter starting address"
-                  />
-                  {beginSuggestions.length > 0 && (
-                    <ul className="absolute z-10 bg-white border border-gray-200 rounded-xl w-full mt-1 shadow-lg max-h-40 overflow-y-auto">
-                      {beginSuggestions.map((s, i) => (
-                        <li key={i} className="px-4 py-3 hover:bg-blue-50 cursor-pointer transition-colors" onClick={() => selectBegin(s)}>{s}</li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-                
-                <div className="relative">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">End Address</label>
-                  <input 
-                    type="text" 
-                    name="endAddress" 
-                    value={form.endAddress} 
-                    onChange={handleChange} 
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" 
-                    required 
-                    autoComplete="off" 
-                    placeholder="Enter destination address"
-                  />
-                  {endSuggestions.length > 0 && (
-                    <ul className="absolute z-10 bg-white border border-gray-200 rounded-xl w-full mt-1 shadow-lg max-h-40 overflow-y-auto">
-                      {endSuggestions.map((s, i) => (
-                        <li key={i} className="px-4 py-3 hover:bg-blue-50 cursor-pointer transition-colors" onClick={() => selectEnd(s)}>{s}</li>
-                      ))}
-                    </ul>
-                  )}
+              {/* Tracking Method Toggle */}
+              <div className="bg-gray-50 rounded-xl p-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-3">Tracking Method</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTrackingMethod('address')}
+                    className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
+                      trackingMethod === 'address'
+                        ? 'bg-blue-600 text-white shadow-md'
+                        : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    📍 Address-based
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTrackingMethod('odometer')}
+                    className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
+                      trackingMethod === 'odometer'
+                        ? 'bg-blue-600 text-white shadow-md'
+                        : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    🚗 Odometer-based
+                  </button>
                 </div>
               </div>
+
+              {/* Address-based inputs */}
+              {trackingMethod === 'address' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="relative">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Begin Address</label>
+                    <input 
+                      type="text" 
+                      name="beginAddress" 
+                      value={form.beginAddress} 
+                      onChange={handleChange} 
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" 
+                      required={trackingMethod === 'address'}
+                      autoComplete="off" 
+                      placeholder="Enter starting address"
+                    />
+                    {beginSuggestions.length > 0 && (
+                      <ul className="absolute z-10 bg-white border border-gray-200 rounded-xl w-full mt-1 shadow-lg max-h-40 overflow-y-auto">
+                        {beginSuggestions.map((s, i) => (
+                          <li key={i} className="px-4 py-3 hover:bg-blue-50 cursor-pointer transition-colors" onClick={() => selectBegin(s)}>{s}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  
+                  <div className="relative">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">End Address</label>
+                    <input 
+                      type="text" 
+                      name="endAddress" 
+                      value={form.endAddress} 
+                      onChange={handleChange} 
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" 
+                      required={trackingMethod === 'address'}
+                      autoComplete="off" 
+                      placeholder="Enter destination address"
+                    />
+                    {endSuggestions.length > 0 && (
+                      <ul className="absolute z-10 bg-white border border-gray-200 rounded-xl w-full mt-1 shadow-lg max-h-40 overflow-y-auto">
+                        {endSuggestions.map((s, i) => (
+                          <li key={i} className="px-4 py-3 hover:bg-blue-50 cursor-pointer transition-colors" onClick={() => selectEnd(s)}>{s}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Odometer-based inputs */}
+              {trackingMethod === 'odometer' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Start Odometer</label>
+                    <input 
+                      type="number" 
+                      name="odometerStart" 
+                      value={form.odometerStart} 
+                      onChange={handleChange} 
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" 
+                      required={trackingMethod === 'odometer'}
+                      placeholder="e.g., 12345"
+                      step="0.1"
+                      min="0"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Beginning of day reading</p>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">End Odometer</label>
+                    <input 
+                      type="number" 
+                      name="odometerEnd" 
+                      value={form.odometerEnd} 
+                      onChange={handleChange} 
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" 
+                      required={trackingMethod === 'odometer'}
+                      placeholder="e.g., 12450"
+                      step="0.1"
+                      min="0"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">End of day reading</p>
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
                 <input 
@@ -531,7 +640,7 @@ export default function MileagePage() {
                   <button 
                     type="button" 
                     onClick={handleCalculateMiles} 
-                    disabled={calculating || !form.beginAddress || !form.endAddress} 
+                    disabled={calculating || (trackingMethod === 'address' && (!form.beginAddress || !form.endAddress)) || (trackingMethod === 'odometer' && (!form.odometerStart || !form.odometerEnd))} 
                     className="flex-1 bg-gray-100 text-gray-700 px-6 py-3 rounded-xl font-semibold shadow hover:bg-gray-200 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {calculating ? "Calculating..." : "Calculate Miles"}
@@ -539,7 +648,7 @@ export default function MileagePage() {
                   
                   <button 
                     type="submit" 
-                    disabled={submitting || (!calculatedMiles && (!form.beginAddress || !form.endAddress))} 
+                    disabled={submitting || (!calculatedMiles && ((trackingMethod === 'address' && (!form.beginAddress || !form.endAddress)) || (trackingMethod === 'odometer' && (!form.odometerStart || !form.odometerEnd))))} 
                     className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all disabled:opacity-60 disabled:cursor-not-allowed transform hover:-translate-y-1"
                   >
                     {submitting ? "Adding..." : "Add Mileage Entry"}
@@ -572,8 +681,7 @@ export default function MileagePage() {
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
                     <th className="px-4 py-3 text-left font-semibold text-gray-700">Date</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">From</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">To</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Details</th>
                     <th className="px-4 py-3 text-left font-semibold text-gray-700">Miles</th>
                     <th className="px-4 py-3 text-left font-semibold text-gray-700">Rate</th>
                     <th className="px-4 py-3 text-left font-semibold text-gray-700">Total</th>
@@ -586,8 +694,26 @@ export default function MileagePage() {
                   {mileageEntries.map((entry) => (
                     <tr key={entry.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3 text-gray-600">{String(entry.date ?? "")}</td>
-                      <td className="px-4 py-3 font-medium">{String(entry.beginAddress ?? "").split(',')[0]}</td>
-                      <td className="px-4 py-3 font-medium">{String(entry.endAddress ?? "").split(',')[0]}</td>
+                      <td className="px-4 py-3">
+                        {entry.odometerStart && entry.odometerEnd ? (
+                          <div className="text-sm">
+                            <div className="font-medium">🚗 Odometer</div>
+                            <div className="text-gray-600">
+                              {entry.odometerStart} → {entry.odometerEnd}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-sm">
+                            <div className="font-medium">📍 Address</div>
+                            <div className="text-gray-600">
+                              {String(entry.beginAddress ?? "").split(',')[0]} → {String(entry.endAddress ?? "").split(',')[0]}
+                            </div>
+                          </div>
+                        )}
+                        {entry.roundTrip && (
+                          <div className="text-xs text-blue-600 font-medium mt-1">Round Trip</div>
+                        )}
+                      </td>
                       <td className="px-4 py-3 font-semibold text-blue-600">{(entry.miles || 0).toFixed(1)}</td>
                       <td className="px-4 py-3 text-gray-600">${(entry.costPerMile || 0).toFixed(2)}</td>
                       <td className="px-4 py-3 font-semibold text-green-600">${(entry.totalCost || 0).toFixed(2)}</td>
@@ -614,7 +740,7 @@ export default function MileagePage() {
                   ))}
                   {mileageEntries.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="text-center text-gray-400 py-8">
+                      <td colSpan={8} className="text-center text-gray-400 py-8">
                         <div className="flex flex-col items-center gap-2">
                           <span className="text-4xl">🚗</span>
                           <p className="text-lg font-medium">No mileage entries yet</p>

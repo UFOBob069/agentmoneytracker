@@ -23,6 +23,7 @@ import SubscriptionGuard from "../../components/SubscriptionGuard";
 
 const categories = [
   "Mileage",
+  "Automotive",
   "Meals",
   "Software",
   "Marketing",
