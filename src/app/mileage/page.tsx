@@ -222,7 +222,8 @@ export default function MileagePage() {
       }
       
       if (miles !== null) {
-        setCalculatedMiles(form.roundTrip ? miles * 2 : miles);
+        // Only apply round trip doubling for address-based tracking
+        setCalculatedMiles(trackingMethod === 'address' && form.roundTrip ? miles * 2 : miles);
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Failed to calculate miles";
@@ -251,7 +252,7 @@ export default function MileagePage() {
           if (isNaN(start) || isNaN(end)) throw new Error("Please enter valid odometer readings.");
           if (end < start) throw new Error("End odometer reading must be greater than start reading.");
           miles = end - start;
-          if (form.roundTrip) miles *= 2;
+          // Round trip doesn't apply to odometer-based tracking
         }
       }
       
@@ -564,17 +565,19 @@ export default function MileagePage() {
                 </div>
               )}
 
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                <input 
-                  type="checkbox" 
-                  name="roundTrip" 
-                  checked={form.roundTrip} 
-                  onChange={handleChange} 
-                  id="roundTrip" 
-                  className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                />
-                <label htmlFor="roundTrip" className="text-sm font-medium text-gray-700">Round Trip</label>
-              </div>
+              {trackingMethod === 'address' && (
+                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                  <input 
+                    type="checkbox" 
+                    name="roundTrip" 
+                    checked={form.roundTrip} 
+                    onChange={handleChange} 
+                    id="roundTrip" 
+                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                  />
+                  <label htmlFor="roundTrip" className="text-sm font-medium text-gray-700">Round Trip</label>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
@@ -657,7 +660,7 @@ export default function MileagePage() {
                 
                 {calculatedMiles !== null && (
                   <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl text-sm text-center font-semibold">
-                    {calculatedMiles.toFixed(2)} miles {form.roundTrip ? "(round trip)" : ""}
+                    {calculatedMiles.toFixed(2)} miles {trackingMethod === 'address' && form.roundTrip ? "(round trip)" : ""}
                   </div>
                 )}
               </div>
@@ -710,7 +713,7 @@ export default function MileagePage() {
                             </div>
                           </div>
                         )}
-                        {entry.roundTrip && (
+                        {entry.roundTrip && !entry.odometerStart && (
                           <div className="text-xs text-blue-600 font-medium mt-1">Round Trip</div>
                         )}
                       </td>
@@ -773,10 +776,12 @@ export default function MileagePage() {
                   <label className="block text-sm font-semibold text-gray-700 mb-2">End Address</label>
                   <input type="text" name="endAddress" value={editForm.endAddress || ''} onChange={handleEditChange} className="w-full px-4 py-3 border border-gray-300 rounded-xl" required />
                 </div>
-                <div className="flex items-center gap-3">
-                  <input type="checkbox" name="roundTrip" checked={!!editForm.roundTrip} onChange={handleEditChange} id="editRoundTrip" className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500" />
-                  <label htmlFor="editRoundTrip" className="text-sm font-medium text-gray-700">Round Trip</label>
-                </div>
+                {!editingEntry.odometerStart && (
+                  <div className="flex items-center gap-3">
+                    <input type="checkbox" name="roundTrip" checked={!!editForm.roundTrip} onChange={handleEditChange} id="editRoundTrip" className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500" />
+                    <label htmlFor="editRoundTrip" className="text-sm font-medium text-gray-700">Round Trip</label>
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Miles</label>
                   <input type="number" name="miles" value={editForm.miles || ''} onChange={handleEditChange} className="w-full px-4 py-3 border border-gray-300 rounded-xl" />
