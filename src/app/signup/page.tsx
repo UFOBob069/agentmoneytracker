@@ -133,6 +133,14 @@ export default function SignUpPage() {
       console.log('Auth state after creating records:', auth.currentUser ? auth.currentUser.email : 'null');
       console.log('Moving to pricing step...');
       
+      // Track successful signup
+      if (typeof window !== 'undefined' && window.gtag) {
+        window.gtag('event', 'sign_up', {
+          method: 'google',
+          custom_parameter: 'google_signup'
+        });
+      }
+      
       // Add a final check to ensure user is still signed in
       setTimeout(() => {
         console.log('Final auth state check:', auth.currentUser ? auth.currentUser.email : 'null');
@@ -181,6 +189,14 @@ export default function SignUpPage() {
       
       console.log('Auth state after creating records:', auth.currentUser ? auth.currentUser.email : 'null');
       console.log('Moving to pricing step...');
+      
+      // Track successful signup
+      if (typeof window !== 'undefined' && window.gtag) {
+        window.gtag('event', 'sign_up', {
+          method: 'email',
+          custom_parameter: 'email_signup'
+        });
+      }
       
       // Add a final check to ensure user is still signed in
       setTimeout(() => {

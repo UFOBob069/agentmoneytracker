@@ -244,7 +244,7 @@ export default function DashboardPage() {
     return () => unsub();
   }, [router]);
 
-  // Load user profile
+  // Load user profile and check if new user
   useEffect(() => {
     if (!user) return;
     const userId = (user as { uid: string }).uid;
@@ -253,10 +253,40 @@ export default function DashboardPage() {
       if (doc.exists()) {
         const data = doc.data() as UserProfile;
         setUserProfile(data);
+        
+        // Check if this is a new user (no deals, expenses, or mileage entries)
+        checkIfNewUser(userId);
       }
     });
     return () => unsub();
-  }, [user]);
+  }, [user, router]);
+
+  // Check if user is new and redirect to welcome page
+  const checkIfNewUser = async (userId: string) => {
+    try {
+      // Check for deals
+      const dealsQuery = query(collection(db, "deals"), where("userId", "==", userId));
+      const dealsSnapshot = await getDocs(dealsQuery);
+      
+      // Check for expenses
+      const expensesQuery = query(collection(db, "expenses"), where("userId", "==", userId));
+      const expensesSnapshot = await getDocs(expensesQuery);
+      
+      // Check for mileage
+      const mileageQuery = query(collection(db, "mileage"), where("userId", "==", userId));
+      const mileageSnapshot = await getDocs(mileageQuery);
+      
+      // If user has no data and hasn't seen welcome page, redirect
+      if (dealsSnapshot.empty && expensesSnapshot.empty && mileageSnapshot.empty) {
+        const hasSeenWelcome = localStorage.getItem('hasSeenWelcome');
+        if (!hasSeenWelcome) {
+          router.push('/welcome');
+        }
+      }
+    } catch (error) {
+      console.error('Error checking if new user:', error);
+    }
+  };
 
   // Fetch deals for current user
   useEffect(() => {
