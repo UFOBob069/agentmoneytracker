@@ -39,6 +39,15 @@ export default function WelcomePage() {
           page_location: window.location.href
         });
       }
+      
+      // Track Facebook Pixel subscription event
+      if (typeof window !== 'undefined' && window.fbq) {
+        window.fbq('track', 'Subscribe', {
+          value: 5,
+          currency: 'USD',
+          predicted_ltv: '10',
+        });
+      }
     }
   }, [user]);
 

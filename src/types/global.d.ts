@@ -12,6 +12,16 @@ declare global {
       }
     ) => void;
     dataLayer: unknown[];
+    fbq: (
+      command: 'track',
+      eventName: string,
+      parameters?: {
+        value?: number;
+        currency?: string;
+        predicted_ltv?: string;
+        [key: string]: unknown;
+      }
+    ) => void;
   }
 }
 
