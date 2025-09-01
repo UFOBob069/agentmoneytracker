@@ -75,6 +75,25 @@ export default function RootLayout({
           />
         </noscript>
         {/* End Facebook Pixel Code */}
+        
+        {/* Google tag (gtag.js) */}
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=G-XKP9S9CNKJ"
+          strategy="afterInteractive"
+        />
+        <Script
+          id="google-analytics"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.dataLayer = window.dataLayer || [];
+              function gtag(){dataLayer.push(arguments);}
+              gtag('js', new Date());
+              gtag('config', 'G-XKP9S9CNKJ');
+            `,
+          }}
+        />
+        {/* End Google tag */}
       </head>
       <body className={`${inter.className} bg-gray-50 min-h-screen`}>
         <Header />
