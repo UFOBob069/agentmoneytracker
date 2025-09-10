@@ -93,7 +93,26 @@ export default function RootLayout({
             `,
           }}
         />
-        {/* End Google tag */}
+        {/* End Google Analytics tag */}
+        
+        {/* Google Ads Conversion Tracking */}
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=AW-17522906777"
+          strategy="afterInteractive"
+        />
+        <Script
+          id="google-ads"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.dataLayer = window.dataLayer || [];
+              function gtag(){dataLayer.push(arguments);}
+              gtag('js', new Date());
+              gtag('config', 'AW-17522906777');
+            `,
+          }}
+        />
+        {/* End Google Ads tag */}
       </head>
       <body className={`${inter.className} bg-gray-50 min-h-screen`}>
         <Header />
